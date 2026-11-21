@@ -1,0 +1,23 @@
+# Keil build output
+Objects/
+Listings/
+*.axf
+*.hex
+*.htm
+*.lnp
+*.map
+*.o
+*.d
+*.crf
+*.dep
+*.lst
+*.bak
+*.iex
+*.sct.bak
+# per-user uVision layout
+*.uvguix.*
+*.uvgui.*
+JLinkLog.txt
+EventRecorderStub.scvd
+# archives
+*.zip
