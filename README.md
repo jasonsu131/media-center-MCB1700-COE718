@@ -4,6 +4,8 @@ Final project for COE 718 (Embedded Systems Design) at Toronto Metropolitan Univ
 
 ![Main menu](docs/photos/02_main_menu.jpg)
 
+The full write-up is in the [final report (PDF)](docs/COE718_Final_Project_Report.pdf).
+
 ## Features
 
 - **Main menu** on the 320 x 240 LCD, moved through with the joystick.
@@ -67,9 +69,9 @@ The full setup notes (target memory settings, RTX config values, USB audio scatt
 - `tools/img2c.py` converts a picture into a flipped RGB565 C header for the gallery.
 - `tools/wav2c.py` converts a WAV file into `song.h` (8 bit, mono, 8 kHz).
 
-## Known issues
+## Notes
 
-- The USB host keyboard driver (`usbhost_kbd.c`) did not enumerate a keyboard on the board, so the games use the joystick.
+- The USB keyboard is an optional input. It needs a keyboard plugged into the board's USB host port, so the default build (`USE_KEYBOARD 0`) plays the games with the joystick.
 - The LPC1768 has one USB controller, so host mode (keyboard) and device mode (USB speaker) cannot run at the same time. The code only starts host mode inside the Game Center and shuts it down on exit.
 
 ## Credits

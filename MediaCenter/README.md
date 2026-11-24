@@ -2,7 +2,7 @@
 
 Keil uVision project for the COE 718 Media Center on the MCB1700. It was built from the Lab 3b Q1 project, so the device, pack versions, debugger and flash settings are the same as your labs.
 
-**Status:** built in Keil and tested on the MCB1700. The menu, photo gallery, MP3 player (song stored in flash) and both games work with the joystick. The USB keyboard driver (`usbhost_kbd.c`) is included but did not work on the board, so the default build uses the joystick only (`USE_KEYBOARD 0`).
+**Status:** built in Keil and tested on the MCB1700. The menu, photo gallery, MP3 player (song stored in flash) and both games work with the joystick. The USB keyboard driver (`usbhost_kbd.c`) is included as an optional input. The default build uses the joystick only (`USE_KEYBOARD 0`).
 
 ## 1. First build (no audio yet)
 
@@ -47,7 +47,7 @@ These are already set in the project. Check them if something behaves oddly.
 | Switch | Default | Meaning |
 | --- | --- | --- |
 | `USE_AUDIO` | 2 | 2 = song stored in flash, 1 = USB speaker (USBAudio example), 0 = screen only |
-| `USE_KEYBOARD` | 0 | set to 0 for joystick-only games if the keyboard driver gives trouble |
+| `USE_KEYBOARD` | 0 | 1 = also accept a USB keyboard in the Game Center, 0 = joystick only |
 | `POT_INVERT` | 1 | flips the pot reading so counter clockwise = louder |
 
 ## 3. MP3 player
