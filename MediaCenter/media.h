@@ -10,14 +10,16 @@
 // -------------------------------------------------------------------
 // build switches
 // -------------------------------------------------------------------
-// 2 = mp3 player plays the song stored in flash (song.c, song.h)
 // 1 = mp3 player is a usb speaker for the pc (USBAudio example files)
+// 2 = mp3 player plays the song stored in flash (song.c, song.h), backup only
 // 0 = mp3 player only shows its screen
-#define USE_AUDIO       2
+#define USE_AUDIO       1
 
-// 1 = usb host keyboard driver is used in the game center
-// 0 = games are joystick only
-#define USE_KEYBOARD    0
+// 2 = pc keyboard: keys typed in uVision's Debug (printf) Viewer reach the
+//     board through the debugger (ITM), works anywhere, needs a debug session
+// 1 = usb host keyboard plugged into the board, game center only
+// 0 = joystick only
+#define USE_KEYBOARD    2
 
 // 1 = flip the pot reading so counter clockwise = louder
 // (set to 0 if the volume goes the wrong way)

@@ -6,6 +6,8 @@
  *   - added audio_hw_stop() to disconnect from the pc on exit
  *   - SystemFrequency -> SystemCoreClock, register names for the Keil pack header
  *   - pot reading can be flipped (POT_INVERT in media.h) so ccw = louder
+ *   - audio_hw_stop() also turns the usb interrupts off so the player can be
+ *     opened again, audio_usb_state() tells the screen what the pc is doing
  * Version: V1.20
  *----------------------------------------------------------------------------
  *      This software is supplied "AS IS" without any warranties, express,
@@ -25,7 +27,7 @@
 #include "usb.h"
 #include "usbcfg.h"
 #include "usbhw.h"
-#include "usbcore.h"
+#include "usbcore.h"                        /* USB_Configuration */
 #include "usbaudio.h"
 #include "media.h"                          /* POT_INVERT */
 
@@ -167,6 +169,9 @@ void audio_hw_start (void)
   DataRun = 0;                          /* start with an empty buffer */
   DataIn  = 0;
   DataOut = 0;
+  USB_Configuration = 0;                /* not set up by the pc yet */
+  Tick = 0;
+  get_potval();                         /* volume bar is right from the start */
 
   LPC_TIM0->MR0 = pclk/DATA_FREQ - 1;	/* TC0 Match Value 0 */
   LPC_TIM0->MCR = 3;					/* TCO Interrupt and Reset on MR0 */
@@ -186,9 +191,35 @@ void audio_hw_stop (void)
   NVIC_DisableIRQ(USB_IRQn);
   NVIC_DisableIRQ(TIMER0_IRQn);
   LPC_TIM0->TCR = 0;                    /* stop the sample timer */
+  LPC_TIM0->IR  = 0x3F;                 /* drop any timer flag that is left */
+
+  /* turn the usb interrupts off while the clocks still run, so nothing old
+     fires the next time the player opens and USB_Init enables the irq */
+  LPC_USB->USBDevIntEn  = 0;
+  LPC_USB->USBDevIntClr = 0xFFFFFFFF;
+  LPC_USB->USBEpIntEn   = 0;
+  LPC_USB->USBEpIntClr  = 0xFFFFFFFF;
+  LPC_USB->USBDMAIntEn  = 0;
+  LPC_USB->USBEpDMADis  = 0xFFFFFFFF;
+  NVIC_ClearPendingIRQ(USB_IRQn);
+  NVIC_ClearPendingIRQ(TIMER0_IRQn);
+
   DataRun = 0;
+  USB_Configuration = 0;
   LPC_DAC->DACR = 0x00008000;           /* DAC middle point = silence */
   LPC_USB->USBClkCtrl = 0;              /* usb clocks off so host mode can start clean */
+}
+
+/*****************************************************************************
+**   audio_usb_state(): for the status line on the mp3 screen
+**   0 = waiting for the pc, 1 = pc set the board up as a speaker,
+**   2 = sound is coming in
+******************************************************************************/
+uint32_t audio_usb_state (void)
+{
+  if (USB_Configuration == 0) return 0;
+  if (DataRun == 0)           return 1;
+  return 2;
 }
 
 #endif  /* USE_AUDIO == 1 */

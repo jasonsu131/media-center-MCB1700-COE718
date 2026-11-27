@@ -2,7 +2,7 @@
 
 Keil uVision project for the COE 718 Media Center on the MCB1700. It was built from the Lab 3b Q1 project, so the device, pack versions, debugger and flash settings are the same as your labs.
 
-**Status:** built in Keil and tested on the MCB1700. The menu, photo gallery, MP3 player (song stored in flash) and both games work with the joystick. The USB keyboard driver (`usbhost_kbd.c`) is included as an optional input. The default build uses the joystick only (`USE_KEYBOARD 0`).
+**Status:** menu, gallery, both games (joystick) and the stored song were run on the board. The MP3 player now defaults to USB streaming from the PC (`USE_AUDIO 1`), which needs a board test with the steps in section 3.
 
 ## 1. First build (no audio yet)
 
@@ -46,13 +46,33 @@ These are already set in the project. Check them if something behaves oddly.
 
 | Switch | Default | Meaning |
 | --- | --- | --- |
-| `USE_AUDIO` | 2 | 2 = song stored in flash, 1 = USB speaker (USBAudio example), 0 = screen only |
-| `USE_KEYBOARD` | 0 | 1 = also accept a USB keyboard in the Game Center, 0 = joystick only |
+| `USE_AUDIO` | 1 | 1 = USB speaker streamed from the PC (USBAudio example), 2 = song stored in flash (backup), 0 = screen only |
+| `USE_KEYBOARD` | 2 | 2 = PC keyboard through the debugger (type in uVision's Debug (printf) Viewer), 1 = USB keyboard plugged into the board, 0 = joystick only |
 | `POT_INVERT` | 1 | flips the pot reading so counter clockwise = louder |
 
 ## 3. MP3 player
 
-### Song in flash (USE_AUDIO 2, the default)
+### USB speaker (USE_AUDIO 1, the default)
+
+When the MP3 player opens, the board connects to the PC as a USB speaker (USB Audio Class, 32 kHz, 16 bit mono). The PC streams whatever it is playing, the USB interrupt puts the samples in a buffer in AHB SRAM, and Timer0 sends them to the DAC (P0.26, the board speaker) 32000 times a second. The pot sets the volume. Leaving the player disconnects the board from the PC.
+
+Screen status line:
+- **Connecting...**: USB is being set up. If it stays like this, the board is stuck in `USB_Init`.
+- **Waiting for PC**: connected, but the PC has not set the board up yet (cable, jumper or driver).
+- **USB speaker ready**: the PC sees the speaker, nothing is playing.
+- **Playing from PC**: audio is coming in.
+
+Controls: SELECT or DOWN goes back to the menu (and disconnects USB). Play, pause and track changes are done on the PC.
+
+Test steps:
+1. Build (F7), flash (F8), RESET.
+2. Plug a USB cable from the PC into the board's **USB Device** connector (not the type A host connector). Keep the ULINK plugged in too.
+3. Open MP3 Player on the board. The PC should make its "device connected" sound and show a new speaker (Windows: "Speakers (USB Audio)" or similar in the sound settings).
+4. On the PC, make that speaker the output device, then play an MP3 or YouTube video.
+5. Turn the pot: counter clockwise should be louder. If it is backwards, change `POT_INVERT` in `media.h`.
+6. Press SELECT. The speaker should disappear from the PC. Open the player again to check it reconnects.
+
+### Song in flash (USE_AUDIO 2, backup)
 `song.c` plays `song.h` through the DAC (P0.26, the board speaker). Timer0 interrupts 8000 times a second and writes one sample. No USB is used. The pot sets the volume.
 
 Controls: SELECT play/pause, LEFT restart, DOWN back to the menu.
@@ -62,10 +82,11 @@ The project comes with a 13 s sample (Ode to Joy, generated). To use your own so
 2. Run `python tools/wav2c.py mysong.wav 25 "Song name"` in the project folder. It writes `song.h` (8 bit, mono, 8000 Hz).
 3. Rebuild. 25 s is about 200 KB of flash, which fits next to the three pictures.
 
-### USB speaker (USE_AUDIO 1)
+### USBAudio files
 
 The USBAudio example files are in the project (group **USB Audio**), adapted for this project:
-- `usbdmain.c`: the example's `main()` is now `audio_hw_start()`, plus a new `audio_hw_stop()` that calls `USB_Connect(FALSE)`. `SystemFrequency` became `SystemCoreClock`.
+- `usbdmain.c`: the example's `main()` is now `audio_hw_start()`, plus a new `audio_hw_stop()` that calls `USB_Connect(FALSE)` and turns the USB interrupts off so the player can be opened again. `audio_usb_state()` gives the screen its status line. `SystemFrequency` became `SystemCoreClock`.
+- `usbhw.c`: the wait for the USB clocks in `USB_Init()` has a limit so it can't hang forever.
 - `usbhw.c`, `usbdmain.c`: register names changed to the ones in the Keil pack's `LPC17xx.h` (for example `DevIntSt` became `USBDevIntSt`, `LPC_ADC->CR` became `LPC_ADC->ADCR`). The example's own older `LPC17xx.h` is **not** used.
 - `usbcore.c`, `usbuser.c`, `usbdesc.c`, `adcuser.c` and the headers are unchanged.
 
@@ -74,12 +95,24 @@ The example uses USB DMA, so its buffers must be in AHB SRAM at 0x20080000. That
 
 Volume direction: the spec says counter clockwise = louder. If it goes the wrong way, change `POT_INVERT` in `media.h`.
 
-## 4. USB keyboard
+## 4. PC keyboard (USE_KEYBOARD 2, the default)
+
+Keys typed on the PC in uVision reach the board through the ULINK debugger (ITM), so nothing is plugged into the board and USB stays free for the MP3 player. It only works during a debug session.
+
+1. Options for Target > Debug > Settings: Port = **SW**. Trace tab: Core Clock = **100 MHz**, tick **Trace Enable**, ITM Stimulus Port 0 ticked.
+2. Build, flash, then start debug (Ctrl+F5) and Run (F5).
+3. View > Serial Windows > **Debug (printf) Viewer**. Click inside it and type.
+
+Keys: W/A/S/D move, Enter, Space or P = SELECT/pause, Q = back/quit. Holding a key keeps the Pong paddle moving (after the PC's key repeat starts). The joystick keeps working too.
+
+## 4b. USB keyboard on the board (USE_KEYBOARD 1)
 
 - Plug the keyboard into the board's USB host (type A) connector. Check the MCB1700 user's guide for the jumper settings that route the USB lines to the host connector and turn on its 5 V supply.
 - Host mode only runs while the Game Center menu is open. Leaving it with **Back** shuts the host down before the MP3 player can use the USB controller.
 - The bottom of the Game Center screen shows "Keyboard: ready" when the keyboard enumerated. "not supported" means a device was found but setup failed.
 - Hubs are not supported. Plug the keyboard in directly.
+- The driver runs both USB ports as host while the Game Center is open and uses whichever one the keyboard appears on (the type A host connector should be port 2, P0.31 D+2).
+- Unplug the PC's USB cable from the device connector while testing the keyboard, so only the keyboard is attached.
 
 ## 5. Controls
 
@@ -115,7 +148,7 @@ Each 200 x 150 picture is 60,000 bytes of flash. Keep it to about 6 pictures.
 | `input.c` | `tJoystick` (20 ms poll) and `tKeyboard` (USB host reports), both feed `inputQ` |
 | `ui.c` | rectangle, text and header helpers |
 | `gallery.c` | `tGallery`: carousel of pictures |
-| `audio.c` | `tAudio`: MP3 splash screen, play/pause, progress and volume bars |
+| `audio.c` | `tAudio`: MP3 splash screen, USB status line, volume bar |
 | `song.c`, `song.h` | song player (timer0 interrupt to the DAC) and the song samples |
 | `tools/wav2c.py` | WAV to `song.h` converter |
 | `game.c`, `game.h` | `tGame`, random numbers, score bar, pause and game over screens |

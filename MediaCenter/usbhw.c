@@ -145,6 +145,7 @@ uint32_t RdCmdDat (uint32_t cmd) {
  */
 
 void USB_Init (void) {
+  uint32_t n;
 
   LPC_PINCON->PINSEL1 &= ~((3<<26)|(3<<28));   /* P0.29 D+, P0.30 D- */
   LPC_PINCON->PINSEL1 |=  ((1<<26)|(1<<28));   /* PINSEL1 26.27, 28.29  = 01 */
@@ -158,7 +159,7 @@ void USB_Init (void) {
   LPC_SC->PCONP |= (1UL<<31);                /* USB PCLK -> enable USB Per.       */
 
   LPC_USB->USBClkCtrl = 0x12;                /* Dev, AHB clock enable */
-  while ((LPC_USB->USBClkSt & 0x12) != 0x12); 
+  for (n = 0; n < 1000000 && (LPC_USB->USBClkSt & 0x12) != 0x12; n++);  /* bounded wait (coe718) */
 
   NVIC_EnableIRQ(USB_IRQn);               /* enable USB interrupt */
 
@@ -697,7 +698,8 @@ void USB_IRQHandler (void) {
 #if USB_SOF_EVENT
   /* Start of Frame Interrupt */
   if (disr & FRAME_INT) {
-    USB_SOF_Event();
+    LPC_USB->USBDevIntClr = FRAME_INT;      /* coe718: clear it, or the irq fires again at once and */
+    USB_SOF_Event();                        /* the rtos threads never get the cpu (lcd froze)       */
   }
 #endif
 

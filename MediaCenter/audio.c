@@ -1,7 +1,9 @@
 // audio.c: tAudio, the mp3 player screen
-// USE_AUDIO 2: plays the song stored in flash (song.c), SELECT = play/pause
 // USE_AUDIO 1: usb speaker from the USBAudio example (usbdmain.c),
-//              the pc streams the music and the interrupts play it
+//              the pc streams the music and the interrupts play it.
+//              the board connects when the player opens and
+//              disconnects when it closes
+// USE_AUDIO 2: backup, plays a song stored in flash (song.c)
 // jason su 501158090
 
 #include <stdio.h>
@@ -13,6 +15,7 @@
 // in usbdmain.c (the USBAudio example, its main() turned into these two)
 extern void audio_hw_start (void);
 extern void audio_hw_stop  (void);
+extern uint32_t audio_usb_state (void);  // 0 waiting for pc, 1 ready, 2 playing
 extern uint16_t PotVal;             // 0..255, read by the timer interrupt
 #endif
 
@@ -81,9 +84,10 @@ static void draw_splash (void) {
     ui_rect (186, 38, 4, 64, Cyan);
 
 #if USE_AUDIO == 1
-    ui_center (5, 1, White, Black, "USB audio: on");
+    ui_center (5, 1, Yellow, Black, "Connecting...");
     ui_center (19, 0, LightGrey, Black, "Play an MP3 or YouTube video on the PC");
-    ui_text (29, 1, 0, LightGrey, Black, "Turn the pot for volume.  SELECT: back");
+    ui_text (28, 1, 0, LightGrey, Black, "Turn the pot for volume");
+    ui_text (29, 1, 0, LightGrey, Black, "SELECT or DOWN: back (usb disconnects)");
 #elif USE_AUDIO == 2
     ui_center (19, 0, LightGrey, Black, song_name ());
     ui_text (28, 1, 0, LightGrey, Black, "SELECT play/pause  LEFT restart");
@@ -104,6 +108,20 @@ static void draw_volume (unsigned int pct) {
     LCD_UNLOCK ();
     LED_Out ((1u << ((pct * 8) / 101 + 1)) - 1);    // leds as a vu style bar
 }
+
+#if USE_AUDIO == 1
+// status line: what the pc is doing with the board
+static void draw_usb_state (uint32_t st) {
+    static const char *msg[3] = { "Waiting for PC", "USB speaker ready", "Playing from PC" };
+    static const unsigned short col[3] = { Yellow, Cyan, Green };
+
+    if (st > 2) st = 0;
+    LCD_LOCK ();
+    ui_rect (0, 120, 320, 24, Black);               // clear row 5 (font 1)
+    ui_center (5, 1, col[st], Black, msg[st]);
+    LCD_UNLOCK ();
+}
+#endif
 
 #if USE_AUDIO == 2
 // "Playing  0:12 / 0:30" line and a thin progress bar
@@ -127,6 +145,9 @@ static void draw_status (void) {
 void tAudio (void const *argument) {
     unsigned int pct, last;
     uint32_t ev;
+#if USE_AUDIO == 1
+    uint32_t st, last_st;
+#endif
 
     for (;;) {
         osSignalWait (SIG_START, osWaitForever);
@@ -134,6 +155,9 @@ void tAudio (void const *argument) {
         draw_splash ();
         audio_start ();
         last = 999;
+#if USE_AUDIO == 1
+        last_st = 99;
+#endif
 
         for (;;) {
             ev = app_get (50);                      // refresh every 50 ms
@@ -142,6 +166,13 @@ void tAudio (void const *argument) {
             if (ev == EV_SELECT) song_play_pause ();
             if (ev == EV_LEFT)   song_restart ();
             draw_status ();
+#elif USE_AUDIO == 1
+            if (ev == EV_SELECT || ev == EV_DOWN || ev == EV_ESC) break;
+            st = audio_usb_state ();
+            if (st != last_st) {
+                draw_usb_state (st);
+                last_st = st;
+            }
 #else
             if (ev == EV_SELECT || ev == EV_ESC) break;
 #endif

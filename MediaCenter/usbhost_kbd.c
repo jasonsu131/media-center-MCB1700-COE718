@@ -95,6 +95,13 @@ typedef struct {                    // host controller communication area, 256 b
 
 static uint32_t state = S_NONE;
 static uint32_t lowspeed, mps0;
+
+// root hub port the keyboard is on. the mcb1700 type A host connector is
+// wired to usb port 2 (P0.31 D+2, D-2), port 1 (P0.29, P0.30) is the device
+// connector used by the mp3 player. both ports are run as host here and the
+// driver uses whichever one a keyboard shows up on
+static volatile uint32_t *portsc = 0;
+#define PORTSC          (*portsc)
 static HCTD *int_cur, *int_dummy;
 
 // -------------------------------------------------------------------
@@ -209,9 +216,9 @@ static void int_stop (void) {
 // -------------------------------------------------------------------
 static void port_reset (void) {
     uint32_t i;
-    LPC_USB->HcRhPortStatus1 = PORT_PRS;
-    for (i = 0; i < 100 && !(LPC_USB->HcRhPortStatus1 & PORT_PRSC); i++) osDelay (1);
-    LPC_USB->HcRhPortStatus1 = PORT_PRSC;           // write 1 to clear
+    PORTSC = PORT_PRS;
+    for (i = 0; i < 100 && !(PORTSC & PORT_PRSC); i++) osDelay (1);
+    PORTSC = PORT_PRSC;                             // write 1 to clear
     osDelay (20);                                   // recovery time
 }
 
@@ -223,7 +230,7 @@ static int enumerate (void) {
     uint32_t total, cfg, i, blen, iface = 0, cur_iface = 0, is_kbd = 0;
     uint32_t ep = 0, ep_mps = 8;
 
-    lowspeed = (LPC_USB->HcRhPortStatus1 & PORT_LSDA) ? ED_LOWSPEED : 0;
+    lowspeed = (PORTSC & PORT_LSDA) ? ED_LOWSPEED : 0;
 
     // address 0, endpoint 0, max packet 8 until we know better
     ed_ctrl->Control = lowspeed | (8u << 16);
@@ -293,11 +300,12 @@ void usbh_start (void) {
     LPC_SC->PCONP |= (1u << 31);                    // power the usb block
     LPC_USB->OTGClkCtrl = 0x19;                     // host, otg and ahb clocks
     for (i = 0; i < 100000 && (LPC_USB->OTGClkSt & 0x19) != 0x19; i++);
-    LPC_USB->OTGStCtrl = 0x3;                       // port 1 as host
+    LPC_USB->OTGStCtrl = 0x1;                       // PORT_FUNC 01: port 1 and port 2 both host
 
-    // pins: P0.29 D+, P0.30 D-, P1.19 USB_PPWR, P1.22 USB_PWRD, P1.27 USB_OVRCR
-    LPC_PINCON->PINSEL1 &= ~((3u << 26) | (3u << 28));
-    LPC_PINCON->PINSEL1 |=  ((1u << 26) | (1u << 28));
+    // pins: P0.29 D+1, P0.30 D-1, P0.31 D+2 (D-2 has its own pin),
+    // P1.19 USB_PPWR, P1.22 USB_PWRD, P1.27 USB_OVRCR
+    LPC_PINCON->PINSEL1 &= ~((3u << 26) | (3u << 28) | (3u << 30));
+    LPC_PINCON->PINSEL1 |=  ((1u << 26) | (1u << 28) | (1u << 30));
     LPC_PINCON->PINSEL3 &= ~((3u << 6) | (3u << 12) | (3u << 22));
     LPC_PINCON->PINSEL3 |=  ((2u << 6) | (2u << 12) | (2u << 22));
 
@@ -327,30 +335,43 @@ void usbh_start (void) {
     LPC_USB->HcControl = CTRL_OPER | CTRL_CLE;      // running
     LPC_USB->HcRhStatus = RH_LPSC;                  // port power on
     LPC_USB->HcRhPortStatus1 = PORT_PPS;
+    LPC_USB->HcRhPortStatus2 = PORT_PPS;
+    portsc = 0;
     state = S_NONE;
 }
 
 void usbh_stop (void) {
     int_stop ();
     LPC_USB->HcRhPortStatus1 = PORT_LSDA;           // port power off
+    LPC_USB->HcRhPortStatus2 = PORT_LSDA;
     LPC_USB->HcRhStatus = RH_LPS;
     LPC_USB->HcControl = 0;                         // back to reset state
     LPC_USB->HcInterruptStatus = 0xFFFFFFFF;
-    LPC_USB->OTGStCtrl = 0;                         // port back to device mode
+    LPC_USB->OTGStCtrl = 0;                         // port 1 back to device mode
     LPC_USB->OTGClkCtrl = 0;                        // clocks off
     state = S_NONE;
 }
 
 int usbh_poll (uint8_t *report) {
-    uint32_t ps = LPC_USB->HcRhPortStatus1;
-    uint32_t i, cc;
+    uint32_t ps, i, cc;
 
-    if (ps & PORT_CSC) LPC_USB->HcRhPortStatus1 = PORT_CSC;    // clear the change flag
+    // no keyboard yet: look at both ports
+    if (portsc == 0) {
+        if (LPC_USB->HcRhPortStatus2 & PORT_CSC) LPC_USB->HcRhPortStatus2 = PORT_CSC;
+        if (LPC_USB->HcRhPortStatus1 & PORT_CSC) LPC_USB->HcRhPortStatus1 = PORT_CSC;
+        if      (LPC_USB->HcRhPortStatus2 & PORT_CCS) portsc = &LPC_USB->HcRhPortStatus2;
+        else if (LPC_USB->HcRhPortStatus1 & PORT_CCS) portsc = &LPC_USB->HcRhPortStatus1;
+        else return USBH_NO_DEV;
+    }
+
+    ps = PORTSC;
+    if (ps & PORT_CSC) PORTSC = PORT_CSC;           // clear the change flag
 
     // unplugged
     if (!(ps & PORT_CCS)) {
         if (state != S_NONE) int_stop ();
         state = S_NONE;
+        portsc = 0;
         return USBH_NO_DEV;
     }
 

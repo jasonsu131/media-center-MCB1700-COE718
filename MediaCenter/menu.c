@@ -42,7 +42,10 @@ static void draw_list (const char **items, unsigned int sel) {
 }
 
 static void draw_kbd_status (void) {
-#if USE_KEYBOARD
+#if USE_KEYBOARD == 2
+    ui_text (27, 1, 0, (kbd_state == 1) ? Green : LightGrey, Black,
+             (kbd_state == 1) ? "Keyboard: PC keyboard ready            " : "Keyboard: type in uVision printf window");
+#elif USE_KEYBOARD == 1
     static const char *msg[3] = { "Keyboard: not connected", "Keyboard: ready        ",
                                   "Keyboard: not supported" };
     ui_text (27, 1, 0, (kbd_state == 1) ? Green : LightGrey, Black, msg[kbd_state > 2 ? 0 : kbd_state]);
@@ -66,7 +69,11 @@ static void draw_games (unsigned int sel) {
     ui_header ("Game Center");
     draw_list (game_items, sel);
     draw_kbd_status ();
+#if USE_KEYBOARD == 2
+    ui_text (28, 1, 0, LightGrey, Black, "Keys: WASD move, Enter/P pause, Q quit");
+#else
     ui_text (28, 1, 0, LightGrey, Black, "Keys: arrows/WASD, Enter pause, Esc quit");
+#endif
     ui_text (29, 1, 0, LightGrey, Black, "Joystick: SELECT pause, DOWN when paused quits");
     LCD_UNLOCK ();
     LED_Out (0x20u << sel);                 // leds 5..7 in the game menu
@@ -134,7 +141,7 @@ void tMenu (void const *argument) {
             break;
 
         case ST_GAMES:
-            if (kbd_state != last_kbd) {                // keyboard plugged in or out
+            if (kbd_state != last_kbd) {                // keyboard seen / plugged in or out
                 last_kbd = kbd_state;
                 LCD_LOCK ();
                 draw_kbd_status ();
